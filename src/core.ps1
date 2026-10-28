@@ -53,7 +53,7 @@ $script:I18N = @{
     'card.freq'          = '当前频率'
     'chart.title'        = '功耗 / 温度趋势'
     'power.limit'        = '功耗上限'
-    'power.hint'         = '拖动滑块或点选预设，然后点「应用」'
+    'power.hint'         = '直接输入数字、拖动滑块或点选预设，然后点「应用」'
     'power.apply'        = '应用功耗上限'
     'power.pending'      = '已修改，点「应用」生效'
     'power.presets'      = '快速预设'
@@ -110,7 +110,7 @@ $script:I18N = @{
     'card.freq'          = 'Current clock'
     'chart.title'        = 'Power / Temperature trend'
     'power.limit'        = 'Power cap'
-    'power.hint'         = 'Drag the slider or pick a preset, then click Apply'
+    'power.hint'         = 'Type a number, drag the slider or pick a preset, then click Apply'
     'power.apply'        = 'Apply power cap'
     'power.pending'      = 'Changed - press Apply'
     'power.presets'      = 'Quick presets'
@@ -298,6 +298,7 @@ function Get-Config {
     RefreshMs   = 3000
     AutoApply   = $false
     LastApplied = $null
+    Profiles    = @()
   }
   if (Test-Path $script:CfgFile) {
     try {
@@ -306,6 +307,41 @@ function Get-Config {
     } catch { }
   }
   return $d
+}
+
+# Normalise whatever lives in config into a clean list of @{Name;MW}.
+function ConvertTo-ProfileList {
+  param($Raw)
+  $out = New-Object System.Collections.ArrayList
+  if ($null -eq $Raw) { return ,$out }
+  foreach ($p in @($Raw)) {
+    if ($null -eq $p) { continue }
+    $nm = ''
+    $mw = 0
+    if ($p -is [string]) { continue }
+    try { $nm = [string]$p.Name } catch { }
+    try { $mw = [int]$p.MW } catch { }
+    if (-not $nm) { continue }
+    if ($mw -lt 5000 -or $mw -gt 54000) { continue }
+    [void]$out.Add([pscustomobject]@{ Name = $nm; MW = $mw })
+  }
+  # comma prevents PowerShell from unrolling a 1-element list into a scalar
+  return ,$out
+}
+
+# Read / write the profile list without touching the other config keys.
+function Get-Profiles { return ConvertTo-ProfileList (Get-Config).Profiles }
+
+function Save-Profiles {
+  param($List)
+  $arr = @()
+  foreach ($p in @($List)) {
+    if ($null -eq $p) { continue }
+    $arr += @{ Name = [string]$p.Name; MW = [int]$p.MW }
+  }
+  $cfg = Get-Config
+  $cfg.Profiles = $arr
+  return (Save-Config $cfg)
 }
 
 function Save-Config {

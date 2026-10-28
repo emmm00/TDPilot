@@ -4,8 +4,8 @@
 
 TDPilot is a small, dependency-free desktop app that puts a friendly face on
 [RyzenAdj](https://github.com/FlyGoat/RyzenAdj). Instead of typing
-`ryzenadj --stapm-limit=25000 ...` into a terminal, you drag a slider, pick a
-preset, and watch the effect live on a chart.
+`ryzenadj --stapm-limit=25000 ...` into a terminal, you type a number (or drag
+the slider, or pick a preset) and watch the effect live on a chart.
 
 > **English** below · **中文** at the bottom · [中文说明](#中文说明)
 
@@ -20,8 +20,9 @@ normally locked behind the vendor's control centre, which may not even exist on
 your SKU.
 
 TDPilot talks to the SMU directly through RyzenAdj and lets you pick **any value
-between 5 W and 54 W**, with one-click presets and an optional logon entry that
-re-applies your value every time you sign in.
+between 5 W and 54 W** — typed straight into the box, decimals included — with
+one-click presets and an optional logon entry that re-applies your value every
+time you sign in.
 
 ## Requirements
 
@@ -42,7 +43,10 @@ or XTU; those chips use a completely different mailbox.
    `src\`).
 2. Double-click **`TDPilot.cmd`**. Windows asks for administrator rights — say
    yes. That is required to talk to the SMU.
-3. Drag the slider (or hit a preset) and press **Apply power cap**.
+3. Type the wattage you want (or drag the slider, or hit a preset) and press
+   **Apply power cap**. Typing is the fastest route: click the big number, key in
+   `25`, press Enter. The `−` / `+` buttons nudge it by one watt, and `↑` / `↓`
+   work too.
 4. Optional: go to **Automation → Enable auto-apply**. TDPilot drops a small
    .cmd into your Startup folder; it runs at every logon and silently
    re-applies the saved value through an elevated helper.
@@ -54,8 +58,8 @@ you are done. Your settings live in `%ProgramData%\TDPilot\`.
 
 | Page | Purpose |
 |---|---|
-| **Dashboard** | Live package power, core temperature, clock; power/temp trend chart; the slider and presets |
-| **Profiles** | Save the current setting under a name and re-apply it later with one click |
+| **Dashboard** | Live package power, core temperature, clock; power/temp trend chart; the wattage box, slider and presets |
+| **Profiles** | Save the current setting under a name, then apply, rename or delete any saved profile |
 | **Automation** | Enable / disable the logon entry, see what it will apply, re-apply on demand |
 | **Hardware** | CPU model, vendor, thread count, nominal clock, and all live SMU limits (`STAPM`, `PPT FAST/SLOW/APU`, `THM`, `TDC`, `EDC`) |
 | **Settings** | Refresh interval, language, open the data folder, copy a diagnostics block |
@@ -155,13 +159,15 @@ table and translate the values — nothing else needs to change.
 
 厂商通常只给「安静」和「性能」两档，中间那段最舒服的区间（比如默认 45W 的
 CPU 限到 25W）藏在自家控制中心里，有些机器甚至没有控制中心。这个工具让你用
-**5W ~ 54W 之间的任意值**，带一键预设，还能开机 / 唤醒后自动套用。
+**5W ~ 54W 之间的任意值**，直接敲键盘输进去就行（支持小数），也有一键预设，
+还能开机 / 唤醒后自动套用。
 
 ### 用法
 
 1. 把整个文件夹放在一起（`bin\` 和 `src\` 要在同一层，别拆开）。
 2. 双击 **`TDPilot.cmd`**，Windows 会弹 UAC 要管理员权限，点是。
-3. 拖滑块或点预设，按「应用功耗上限」。
+3. 在大数字那里直接输入瓦数，回车就应用；也可以拖滑块、点预设。`−` / `+` 每次
+   调 1W，`↑` / `↓` 也行。
 4. 想要长期生效：进「自动化」页 →「启用自动套用」，会在你的启动文件夹里放一个
    小 .cmd，每次登录时静默提权、把保存的功耗值重新写一遍。
 5. 不想要了：删掉文件夹即可，本工具不写系统目录。设置存在 `%ProgramData%\TDPilot\`。
@@ -170,8 +176,8 @@ CPU 限到 25W）藏在自家控制中心里，有些机器甚至没有控制中
 
 | 页面 | 作用 |
 |---|---|
-| **仪表盘** | 实时功耗 / 温度 / 频率、趋势曲线、滑块与预设 |
-| **预设方案** | 把当前设置存成一条，以后一键套用 |
+| **仪表盘** | 实时功耗 / 温度 / 频率、趋势曲线、瓦数输入框、滑块与预设 |
+| **预设方案** | 把当前设置存成一条，之后可以套用、改名、删除 |
 | **自动化** | 开关登录自动套用，查看会套用多少瓦，也可以手动立即套用一次 |
 | **硬件信息** | CPU 型号、厂商、线程数、标称频率，以及全部 SMU 限制值 |
 | **设置** | 刷新间隔、界面语言、打开数据目录、复制诊断信息 |

@@ -150,7 +150,7 @@ function Apply-Lang {
   (UI 'BtnCopyDiag').Content = $(if ($L -eq 'zh') { '复制诊断' } else { 'Copy diagnostics' })
 
   # about page
-  Set-Text 'TxtAboutVer'  ('v1.0.0')
+  Set-Text 'TxtAboutVer'  ('v1.1.0')
   Set-Text 'TxtAboutDesc' $(if ($L -eq 'zh') { '面向 AMD Ryzen 处理器的功耗墙调节工具。通过 RyzenAdj 直接与 SMU 通信，可在 5~54 W 之间任意设定封装功耗上限。' } else { 'A power-limit tuner for AMD Ryzen processors. Talks to the SMU through RyzenAdj so you can set any package power cap between 5 and 54 W.' })
   Set-Text 'TxtAboutLicHead' $(if ($L -eq 'zh') { '开源许可' } else { 'License' })
   Set-Text 'TxtAboutLic' $(if ($L -eq 'zh') {
@@ -164,6 +164,9 @@ function Apply-Lang {
   Update-PageTitle
   Update-StatusBlock
   if ($script:LastSnap) { Render-Snapshot $script:LastSnap }
+  # profile rows build their buttons from the current language, so they must be
+  # rebuilt whenever the language changes.
+  Render-Profiles
 }
 
 # ------------------------------------------------------------ navigation
@@ -413,14 +416,45 @@ function Apply-Power {
   }
 }
 
+# ------------------------------------------------------------ power input
+# The big number is a TextBox now: parse whatever the user typed.
+function Get-TypedW {
+  $tb = UI 'ValSetW'
+  if (-not $tb) { return $null }
+  $raw = ([string]$tb.Text).Trim() -replace ',', '.'
+  $raw = $raw -replace '[^0-9.]', ''
+  $d = 0.0
+  if (-not [double]::TryParse($raw, [ref]$d)) { return $null }
+  return $d
+}
+
+function Set-TypedW([double]$Watts) {
+  $tb = UI 'ValSetW'
+  if ($tb) { $tb.Text = ('{0:0.0}' -f $Watts) }
+}
+
+# Clamp to 5..54 and re-render; returns the clamped value or $null when invalid.
+function Normalize-TypedW {
+  $d = Get-TypedW
+  if ($null -eq $d) { return $null }
+  if ($d -lt 5)  { $d = 5 }
+  if ($d -gt 54) { $d = 54 }
+  $d = [math]::Round($d, 1)
+  Set-TypedW $d
+  $s = UI 'SldPower'
+  if ($s) { $s.Value = $d }
+  return $d
+}
+
 # ------------------------------------------------------------ profiles page
 function Render-Profiles {
   $sp = UI 'ProfList'
   if (-not $sp) { return }
   $sp.Children.Clear()
+  $zh = ($script:Lang -eq 'zh')
   if ($script:Profiles.Count -eq 0) {
     $t = New-Object System.Windows.Controls.TextBlock
-    $t.Text = $(if ($script:Lang -eq 'zh') { '还没有预设。点右上角「新建预设」，把当前设置存下来。' } else { 'No profiles yet. Click "New profile" to save the current setting.' })
+    $t.Text = $(if ($zh) { '还没有预设。点右上角「新建预设」，把当前设置存下来。' } else { 'No profiles yet. Click "New profile" to save the current setting.' })
     $t.FontSize = 12; $t.Foreground = Br '#5E6B80'; $t.Margin = '12,14,12,14'
     $t.TextWrapping = 'Wrap'
     [void]$sp.Children.Add($t)
@@ -432,12 +466,15 @@ function Render-Profiles {
     $b.Background = Br '#141A24'
     $b.BorderBrush = Br '#232A38'
     $b.BorderThickness = 1
-    $b.Padding = '14,12'
+    $b.Padding = '14,10'
     $b.Margin = '6,4,6,4'
     $g = New-Object System.Windows.Controls.Grid
     $c1 = New-Object System.Windows.Controls.ColumnDefinition; $c1.Width = '*'
     $c2 = New-Object System.Windows.Controls.ColumnDefinition; $c2.Width = 'Auto'
+    $c3 = New-Object System.Windows.Controls.ColumnDefinition; $c3.Width = 'Auto'
+    $c4 = New-Object System.Windows.Controls.ColumnDefinition; $c4.Width = 'Auto'
     $g.ColumnDefinitions.Add($c1); $g.ColumnDefinitions.Add($c2)
+    $g.ColumnDefinitions.Add($c3); $g.ColumnDefinitions.Add($c4)
     $st = New-Object System.Windows.Controls.StackPanel
     $n1 = New-Object System.Windows.Controls.TextBlock
     $n1.Text = $pf.Name; $n1.FontSize = 13; $n1.Foreground = Br '#E8EDF5'
@@ -445,22 +482,190 @@ function Render-Profiles {
     $n2.Text = ('{0:0.0} W' -f ($pf.MW / 1000.0)); $n2.FontSize = 11; $n2.Foreground = Br '#22D3EE'
     $n2.Margin = '0,3,0,0'
     [void]$st.Children.Add($n1); [void]$st.Children.Add($n2)
-    $btn = New-Object System.Windows.Controls.Button
-    $btn.Content = $(if ($script:Lang -eq 'zh') { '应用' } else { 'Apply' })
-    $btn.Width = 66; $btn.Height = 30
-    $btn.Style = $script:UC.FindResource('BtnGhost')
-    $btn.Tag = $pf.MW
-    $btn.Add_Click({
+    $g.Children.Add($st) | Out-Null
+    [System.Windows.Controls.Grid]::SetColumn($st, 0)
+    $st.VerticalAlignment = 'Center'
+
+    # Apply
+    $btnA = New-Object System.Windows.Controls.Button
+    $btnA.Content = $(if ($zh) { '应用' } else { 'Apply' })
+    $btnA.Width = 62; $btnA.Height = 30; $btnA.FontSize = 11.5
+    $btnA.Style = $script:UC.FindResource('BtnGhost')
+    $btnA.Tag = $pf.MW
+    $btnA.Add_Click({
       $mw = [int]$this.Tag
-      Set-Text 'ValSetW' ('{0:0.0}' -f ($mw / 1000.0))
+      Set-TypedW ($mw / 1000.0)
       (UI 'SldPower').Value = ($mw / 1000.0)
       [void](Apply-Power $mw)
     })
-    [System.Windows.Controls.Grid]::SetColumn($btn, 1)
-    [void]$g.Children.Add($st); [void]$g.Children.Add($btn)
+    [System.Windows.Controls.Grid]::SetColumn($btnA, 1)
+    $btnA.Margin = '8,0,0,0'
+    [void]$g.Children.Add($btnA)
+
+    # Edit
+    $btnE = New-Object System.Windows.Controls.Button
+    $btnE.Content = $(if ($zh) { '编辑' } else { 'Edit' })
+    $btnE.Width = 62; $btnE.Height = 30; $btnE.FontSize = 11.5
+    $btnE.Style = $script:UC.FindResource('BtnGhost')
+    $btnE.Margin = '8,0,0,0'
+    $target = $pf
+    $btnE.Add_Click({
+      Edit-Profile $target
+    }.GetNewClosure())
+    [System.Windows.Controls.Grid]::SetColumn($btnE, 2)
+    [void]$g.Children.Add($btnE)
+
+    # Delete
+    $btnD = New-Object System.Windows.Controls.Button
+    $btnD.Content = $(if ($zh) { '删除' } else { 'Delete' })
+    $btnD.Width = 62; $btnD.Height = 30; $btnD.FontSize = 11.5
+    $btnD.Style = $script:UC.FindResource('BtnGhost')
+    $btnD.Margin = '8,0,0,0'
+    $btnD.Foreground = Br '#F43F5E'
+    $btnD.Add_Click({
+      Remove-Profile $target
+    }.GetNewClosure())
+    [System.Windows.Controls.Grid]::SetColumn($btnD, 3)
+    [void]$g.Children.Add($btnD)
+
     $b.Child = $g
     [void]$sp.Children.Add($b)
   }
+}
+
+# --- profile editor (create / edit share the same dialog) ------------------
+function Show-ProfileDialog {
+  param($Profile)   # $null = create, otherwise edit-in-place
+  $zh = ($script:Lang -eq 'zh')
+  $isNew = ($null -eq $Profile)
+
+  $dlg = New-Object System.Windows.Window
+  $dlg.Title = $(if ($isNew) { $(if ($zh) { '新建预设' } else { 'New profile' }) } else { $(if ($zh) { '编辑预设' } else { 'Edit profile' }) })
+  $dlg.Width = 380
+  $dlg.SizeToContent = 'Height'
+  $dlg.WindowStartupLocation = 'CenterOwner'
+  $dlg.ResizeMode = 'NoResize'
+  $dlg.WindowStyle = 'ToolWindow'
+  $dlg.Background = Br '#11151D'
+  $dlg.Foreground = Br '#E8EDF5'
+  $dlg.FontFamily = 'Microsoft YaHei UI, Segoe UI'
+
+  $root = New-Object System.Windows.Controls.StackPanel
+  $root.Margin = '20,18,20,16'
+
+  $l1 = New-Object System.Windows.Controls.TextBlock
+  $l1.Text = $(if ($zh) { '名称' } else { 'Name' })
+  $l1.FontSize = 11; $l1.Foreground = Br '#9AA6B8'; $l1.Margin = '0,0,0,6'
+  $txtName = New-Object System.Windows.Controls.TextBox
+  $txtName.Height = 34; $txtName.FontSize = 13
+  $txtName.Padding = '8,0'; $txtName.VerticalContentAlignment = 'Center'
+  $txtName.Background = Br '#161B25'; $txtName.Foreground = Br '#E8EDF5'
+  $txtName.BorderBrush = Br '#2E3749'; $txtName.CaretBrush = Br '#22D3EE'
+
+  $l2 = New-Object System.Windows.Controls.TextBlock
+  $l2.Text = $(if ($zh) { '功耗上限（W）' } else { 'Power cap (W)' })
+  $l2.FontSize = 11; $l2.Foreground = Br '#9AA6B8'; $l2.Margin = '0,14,0,6'
+  $txtMW = New-Object System.Windows.Controls.TextBox
+  $txtMW.Height = 34; $txtMW.FontSize = 13
+  $txtMW.Padding = '8,0'; $txtMW.VerticalContentAlignment = 'Center'
+  $txtMW.Background = Br '#161B25'; $txtMW.Foreground = Br '#E8EDF5'
+  $txtMW.BorderBrush = Br '#2E3749'; $txtMW.CaretBrush = Br '#22D3EE'
+
+  $err = New-Object System.Windows.Controls.TextBlock
+  $err.Text = ''; $err.FontSize = 11; $err.Foreground = Br '#F43F5E'; $err.Margin = '0,10,0,0'
+  $err.TextWrapping = 'Wrap'
+
+  $row = New-Object System.Windows.Controls.StackPanel
+  $row.Orientation = 'Horizontal'; $row.HorizontalAlignment = 'Right'; $row.Margin = '0,18,0,0'
+  $btnCancel = New-Object System.Windows.Controls.Button
+  $btnCancel.Content = $(if ($zh) { '取消' } else { 'Cancel' })
+  $btnCancel.Width = 84; $btnCancel.Height = 34; $btnCancel.FontSize = 12
+  $btnCancel.Style = $script:UC.FindResource('BtnGhost')
+  $btnOK = New-Object System.Windows.Controls.Button
+  $btnOK.Content = $(if ($zh) { '保存' } else { 'Save' })
+  $btnOK.Width = 84; $btnOK.Height = 34; $btnOK.FontSize = 12; $btnOK.Margin = '10,0,0,0'
+  $btnOK.Style = $script:UC.FindResource('BtnPrimary')
+  [void]$row.Children.Add($btnCancel); [void]$row.Children.Add($btnOK)
+
+  [void]$root.Children.Add($l1); [void]$root.Children.Add($txtName)
+  [void]$root.Children.Add($l2); [void]$root.Children.Add($txtMW)
+  [void]$root.Children.Add($err); [void]$root.Children.Add($row)
+  $dlg.Content = $root
+
+  if ($isNew) {
+    $mw = [int]([math]::Round((Get-SafeSetW) * 1000))
+    $txtName.Text = ('{0:0.0} W' -f ($mw / 1000.0))
+    $txtMW.Text = ('{0:0.0}' -f ($mw / 1000.0))
+  } else {
+    $txtName.Text = $Profile.Name
+    $txtMW.Text = ('{0:0.0}' -f ($Profile.MW / 1000.0))
+  }
+
+  $script:DlgResult = $null
+
+  $btnCancel.Add_Click({ $this.Tag = 'cancel'; [void]([System.Windows.Window]::GetWindow($this).Close()) })
+  $btnOK.Add_Click({
+    $n = ([string]$txtName.Text).Trim()
+    $rawW = ([string]$txtMW.Text).Trim() -replace ',', '.'
+    $w = 0.0
+    if (-not $n) { $err.Text = $(if ($zh) { '名称不能为空' } else { 'Name cannot be empty' }); return }
+    if (-not [double]::TryParse($rawW, [ref]$w)) { $err.Text = $(if ($zh) { '瓦数必须是数字' } else { 'Power must be a number' }); return }
+    if ($w -lt 5 -or $w -gt 54) { $err.Text = $(if ($zh) { '瓦数需在 5 ~ 54 之间' } else { 'Power must be between 5 and 54 W' }); return }
+    $script:DlgResult = [pscustomobject]@{ Name = $n; MW = [int][math]::Round($w * 1000) }
+    [void]([System.Windows.Window]::GetWindow($this).Close())
+  })
+
+  $txtName.Add_KeyDown({ param($s,$e) if ($e.Key -eq 'Return') { $btnOK.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))); } })
+  $txtMW.Add_KeyDown({ param($s,$e) if ($e.Key -eq 'Return') { $btnOK.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))); } })
+
+  $owner = [System.Windows.Window]::GetWindow($script:UC)
+  if ($owner) { $dlg.Owner = $owner }
+  [void]$dlg.ShowDialog()
+  return $script:DlgResult
+}
+
+function Get-SafeSetW {
+  $d = Get-TypedW
+  if ($null -eq $d) { $d = [double](UI 'SldPower').Value }
+  if ($d -lt 5) { $d = 5 }
+  if ($d -gt 54) { $d = 54 }
+  return $d
+}
+
+function Add-Profile {
+  $r = Show-ProfileDialog $null
+  if (-not $r) { return }
+  [void]$script:Profiles.Add($r)
+  Save-Profiles $script:Profiles | Out-Null
+  Render-Profiles
+  Add-Log $(if ($script:Lang -eq 'zh') { ('已新建预设：{0}（{1:0.0} W）' -f $r.Name, ($r.MW / 1000.0)) } else { ('Profile created: {0} ({1:0.0} W)' -f $r.Name, ($r.MW / 1000.0)) }) 'ok'
+}
+
+function Edit-Profile {
+  param($Profile)
+  if ($null -eq $Profile) { return }
+  $r = Show-ProfileDialog $Profile
+  if (-not $r) { return }
+  $Profile.Name = $r.Name
+  $Profile.MW = $r.MW
+  Save-Profiles $script:Profiles | Out-Null
+  Render-Profiles
+  Add-Log $(if ($script:Lang -eq 'zh') { ('预设已更新：{0}（{1:0.0} W）' -f $r.Name, ($r.MW / 1000.0)) } else { ('Profile updated: {0} ({1:0.0} W)' -f $r.Name, ($r.MW / 1000.0)) }) 'ok'
+}
+
+function Remove-Profile {
+  param($Profile)
+  if ($null -eq $Profile) { return }
+  $zh = ($script:Lang -eq 'zh')
+  $msg = $(if ($zh) { ('确定删除预设「{0}」？' -f $Profile.Name) } else { ('Delete profile "{0}"?' -f $Profile.Name) })
+  $cap = $(if ($zh) { '删除预设' } else { 'Delete profile' })
+  $r = [System.Windows.MessageBox]::Show($msg, $cap, 'YesNo', 'Question')
+  if ($r -ne 'Yes') { return }
+  $idx = $script:Profiles.IndexOf($Profile)
+  if ($idx -ge 0) { $script:Profiles.RemoveAt($idx) }
+  Save-Profiles $script:Profiles | Out-Null
+  Render-Profiles
+  Add-Log $(if ($zh) { ('已删除预设：{0}' -f $Profile.Name) } else { ('Profile deleted: {0}' -f $Profile.Name) }) 'ok'
 }
 
 # ------------------------------------------------------------ automation page

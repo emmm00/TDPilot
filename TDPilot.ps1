@@ -6,7 +6,8 @@
 
 param(
   [switch]$SelfTest,          # render the UI offscreen, print a report, exit
-  [switch]$NoPoll
+  [switch]$NoPoll,
+  [string]$Harness = ''       # internal: run a script after all bindings are wired
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,6 +23,7 @@ $script:AccessOk    = $false
 $script:AccessError = $null
 $cfg = Get-Config
 if ($cfg.Lang) { Set-Language $cfg.Lang }
+$script:Profiles = Get-Profiles
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
@@ -52,12 +54,81 @@ foreach ($k in @('dash','prof','auto','hw','set','about')) {
   }.GetNewClosure())
 }
 
-# ---------------------------------------------------------------- slider
+# ---------------------------------------------------------------- power box
+# The big number is editable: keep slider and textbox in sync, clamp on blur.
+$tbW = UI 'ValSetW'
 $sld = UI 'SldPower'
+
+$tbW.Add_GotKeyboardFocus({
+  param($s, $e)
+  $s.SelectAll()
+  $ub = UI 'SetWUnderline'
+  if ($ub) { $ub.Background = Br '#22D3EE' }
+})
+$tbW.Add_LostKeyboardFocus({
+  param($s, $e)
+  $ub = UI 'SetWUnderline'
+  if ($ub) { $ub.Background = Br '#232A38' }
+  [void](Normalize-TypedW)
+  Set-Text 'TxtApplyState' (T 'power.pending')
+  (UI 'TxtApplyState').Foreground = Br '#FBBF24'
+})
+$tbW.Add_TextChanged({
+  param($s, $e)
+  $d = Get-TypedW
+  if ($null -ne $d -and $d -ge 5 -and $d -le 54) {
+    if ($sld) { $sld.Value = $d }
+  }
+})
+$tbW.Add_KeyDown({
+  param($s, $e)
+  if ($e.Key -eq 'Return') {
+    $v = Normalize-TypedW
+    if ($null -ne $v) {
+      $mw = [int][math]::Round($v * 1000)
+      [void](Apply-Power $mw)
+    }
+  } elseif ($e.Key -eq 'Up') {
+    $v = Normalize-TypedW; if ($null -eq $v) { $v = 25 }
+    Set-TypedW ([math]::Min(54, $v + 1)); if ($sld) { $sld.Value = [math]::Min(54, $v + 1) }
+    $e.Handled = $true
+  } elseif ($e.Key -eq 'Down') {
+    $v = Normalize-TypedW; if ($null -eq $v) { $v = 25 }
+    Set-TypedW ([math]::Max(5, $v - 1)); if ($sld) { $sld.Value = [math]::Max(5, $v - 1) }
+    $e.Handled = $true
+  }
+})
+
+if (UI 'BtnWMinus') {
+  (UI 'BtnWMinus').Add_Click({
+    param($s, $e)
+    $v = Get-SafeSetW
+    $v = [math]::Max(5, [math]::Round($v - 1, 1))
+    Set-TypedW $v
+    if ($sld) { $sld.Value = $v }
+    Set-Text 'TxtApplyState' (T 'power.pending')
+    (UI 'TxtApplyState').Foreground = Br '#FBBF24'
+  })
+}
+if (UI 'BtnWPlus') {
+  (UI 'BtnWPlus').Add_Click({
+    param($s, $e)
+    $v = Get-SafeSetW
+    $v = [math]::Min(54, [math]::Round($v + 1, 1))
+    Set-TypedW $v
+    if ($sld) { $sld.Value = $v }
+    Set-Text 'TxtApplyState' (T 'power.pending')
+    (UI 'TxtApplyState').Foreground = Br '#FBBF24'
+  })
+}
+
 $sld.Add_ValueChanged({
   param($s, $e)
-  $v = [double]$s.Value
-  Set-Text 'ValSetW' ('{0:0.0}' -f $v)
+  $tb = UI 'ValSetW'
+  # avoid fighting the user while they type
+  if ($tb -and -not $tb.IsKeyboardFocused) {
+    $tb.Text = ('{0:0.0}' -f [double]$s.Value)
+  }
 })
 
 $sld.Add_MouseLeftButtonUp({
@@ -76,7 +147,9 @@ if ($sldRefresh) {
 
 # ---------------------------------------------------------------- apply
 (UI 'BtnApply').Add_Click({
-  $mw = [int]([math]::Round([double](UI 'SldPower').Value * 1000))
+  $v = Normalize-TypedW
+  if ($null -eq $v) { $v = [double](UI 'SldPower').Value }
+  $mw = [int][math]::Round($v * 1000)
   [void](Apply-Power $mw)
 })
 
@@ -93,7 +166,7 @@ foreach ($p in $presets) {
   $btn.Add_Click({
     param($s, $e)
     (UI 'SldPower').Value = ($mw / 1000.0)
-    Set-Text 'ValSetW' ('{0:0.0}' -f ($mw / 1000.0))
+    Set-TypedW ($mw / 1000.0)
     [void](Apply-Power $mw)
   }.GetNewClosure())
 }
@@ -102,7 +175,7 @@ foreach ($p in $presets) {
   param($s, $e)
   $r = Reset-ToDefaults
   (UI 'SldPower').Value = ($script:DefaultMW / 1000.0)
-  Set-Text 'ValSetW' ('{0:0.0}' -f ($script:DefaultMW / 1000.0))
+  Set-TypedW ($script:DefaultMW / 1000.0)
   if ($r.Written) {
     Add-Log $(if ($script:Lang -eq 'zh') { ('已恢复默认：{0:0.0} W' -f ($r.MilliWatts / 1000.0)) } else { ('Restored default: {0:0.0} W' -f ($r.MilliWatts / 1000.0)) }) 'ok'
   } else {
@@ -114,8 +187,9 @@ foreach ($p in $presets) {
 })
 (UI 'PrCustom').Add_Click({
   param($s, $e)
-  (UI 'SldPower').Focus() | Out-Null
-  Add-Log $(if ($script:Lang -eq 'zh') { '拖动滑杆选择自定义瓦数，然后点「应用」' } else { 'Drag the slider to pick a value, then press Apply' })
+  $tb = UI 'ValSetW'
+  if ($tb) { [void]$tb.Focus(); $tb.SelectAll() }
+  Add-Log $(if ($script:Lang -eq 'zh') { '直接输入瓦数回车即可应用，或用 − / + 微调' } else { 'Type the wattage and press Enter, or use - / + to nudge' })
 })
 
 # ---------------------------------------------------------------- topbar
@@ -211,12 +285,9 @@ if (UI 'BtnCopyDiag') {
 }
 
 if (UI 'BtnProfNew') {
-  (UI 'BtnProfNew').Add_Click({ param($s, $e)
-    $mw = [int]([math]::Round([double](UI 'SldPower').Value * 1000))
-    $name = '{0:0.0} W' -f ($mw / 1000.0)
-    [void]$script:Profiles.Add([pscustomobject]@{ Name = $name; MW = $mw })
-    Render-Profiles
-    Add-Log ("profile saved: {0}" -f $name) 'ok'
+  (UI 'BtnProfNew').Add_Click({
+    param($s, $e)
+    Add-Profile
   })
 }
 
@@ -287,4 +358,23 @@ $app.Add_DispatcherUnhandledException({
   Add-Log ("unhandled: " + $e.Exception.Message) 'err'
   $e.Handled = $true
 })
+
+# ---------------------------------------------------------------- harness
+# Internal testing hook: once every real handler is attached and the window is
+# up, hand control to a script in THIS runspace, so automation drives the same
+# bindings a user does instead of a copy of them.
+if ($Harness) {
+  $win.Add_Loaded({
+    param($s, $e)
+    $script:PollTimer | ForEach-Object { if ($_) { $_.Stop() } }
+    try {
+      $h = (Resolve-Path -LiteralPath $Harness -ErrorAction Stop).Path
+      . $h
+    } catch {
+      "harness error: " + $_.Exception.Message
+      "  at " + $_.InvocationInfo.PositionMessage
+    }
+    $win.Close()
+  })
+}
 $app.Run($win) | Out-Null

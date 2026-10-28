@@ -1,0 +1,14 @@
+# editor / OS cruft
+*~
+*.swp
+Thumbs.db
+desktop.ini
+
+# local scratch and probe output (never commit)
+_probe/
+*.log
+ui_render.png
+
+# generated at runtime, never in the repo
+config.json
+limit-mw.txt

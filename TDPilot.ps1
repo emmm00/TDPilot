@@ -221,10 +221,39 @@ function Switch-Language {
 })
 
 # ---------------------------------------------------------------- automation
-# ---------------------------------------------------------------- automation
+if (UI 'ValAutoW') {
+  $ab = UI 'ValAutoW'
+  $ab.Add_GotKeyboardFocus({
+    param($s, $e)
+    $s.SelectAll()
+    $ub = UI 'AutoWUnderline'
+    if ($ub) { $ub.Background = Br '#22D3EE' }
+  })
+  $ab.Add_LostKeyboardFocus({
+    param($s, $e)
+    $ub = UI 'AutoWUnderline'
+    if ($ub) { $ub.Background = Br '#232A38' }
+    $v = Get-TypedAutoW
+    if ($null -ne $v) { Set-TypedAutoW $v }
+  })
+  $ab.Add_KeyDown({
+    param($s, $e)
+    if ($e.Key -eq 'Return') { [void](Save-AutoValue) }
+    elseif ($e.Key -eq 'Up')   { $v = Get-TypedAutoW; if ($null -eq $v) { $v = 25 }; Set-TypedAutoW ([math]::Min(54, $v + 1)); $e.Handled = $true }
+    elseif ($e.Key -eq 'Down') { $v = Get-TypedAutoW; if ($null -eq $v) { $v = 25 }; Set-TypedAutoW ([math]::Max(5, $v - 1));  $e.Handled = $true }
+  })
+}
+if (UI 'BtnAutoSave') {
+  (UI 'BtnAutoSave').Add_Click({
+    param($s, $e)
+    [void](Save-AutoValue)
+  })
+}
+
 (UI 'BtnAutoInstall').Add_Click({
   param($s, $e)
-  $mw = [int]([math]::Round([double](UI 'SldPower').Value * 1000))
+  $mw = Get-AutoSavedMW
+  if ($mw -le 0) { $mw = [int]([math]::Round([double](UI 'SldPower').Value * 1000)) }
   if (Install-Autostart -MilliWatts $mw) {
     $wv = '{0:0.0}' -f ($mw / 1000.0)
     Add-Log $(if ($script:Lang -eq 'zh') { "已启用自动套用：下次登录会套用 $wv W" } else { "Auto-apply enabled: $wv W will be applied at next logon" }) 'ok'

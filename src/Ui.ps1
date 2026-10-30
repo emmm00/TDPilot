@@ -133,6 +133,9 @@ function Apply-Lang {
   if (UI 'BtnAutoRunNow') { (UI 'BtnAutoRunNow').Content = $(if ($L -eq 'zh') { '立即套用一次' } else { 'Apply now' }) }
   Set-Text 'TxtTrigHead' $(if ($L -eq 'zh') { '触发器' } else { 'Triggers' })
   Set-Text 'TxtTaskHead' $(if ($L -eq 'zh') { '启动项详情' } else { 'Startup entry details' })
+  if (UI 'LblAutoMw')      { (UI 'LblAutoMw').Text      = $(if ($L -eq 'zh') { '登录时套用的功耗' } else { 'Power applied at logon' }) }
+  if (UI 'TxtAutoMwHint')  { (UI 'TxtAutoMwHint').Text  = $(if ($L -eq 'zh') { '只改下次登录套用的值，不影响当前已经生效的功耗。' } else { 'Changes only the value used at the next logon; the limit in effect right now is untouched.' }) }
+  if (UI 'BtnAutoSave')    { (UI 'BtnAutoSave').Content = $(if ($L -eq 'zh') { '保存' } else { 'Save' }) }
 
   # hardware page
   Set-Text 'TxtHwCpuHead' $(if ($L -eq 'zh') { '处理器' } else { 'Processor' })
@@ -669,6 +672,65 @@ function Remove-Profile {
 }
 
 # ------------------------------------------------------------ automation page
+# What value will the logon entry actually write? limit-mw.txt wins; if it is
+# missing we fall back to whatever the dashboard last applied.
+function Get-AutoSavedMW {
+  $mw = 0
+  $mwPath = Get-ApplyMwPath
+  if (Test-Path $mwPath) {
+    try { $mw = [int](([System.IO.File]::ReadAllText($mwPath)).Trim()) } catch { $mw = 0 }
+  }
+  if ($mw -le 0) {
+    $c = Get-Config
+    if ($c.PowerMW) { $mw = [int]$c.PowerMW }
+  }
+  if ($mw -lt 5000 -or $mw -gt 54000) { $mw = 0 }
+  return $mw
+}
+
+# Read the wattage typed into the automation box and clamp it to 5..54 W.
+function Get-TypedAutoW {
+  $tb = UI 'ValAutoW'
+  if (-not $tb) { return $null }
+  $raw = ([string]$tb.Text).Trim() -replace ',', '.'
+  $raw = $raw -replace '[^0-9.]', ''
+  $d = 0.0
+  if (-not [double]::TryParse($raw, [ref]$d)) { return $null }
+  if ($d -lt 5)  { $d = 5 }
+  if ($d -gt 54) { $d = 54 }
+  return [math]::Round($d, 1)
+}
+
+# Persist the typed value as the logon-entry value only. The limit that is live
+# right now is deliberately left alone so this cannot silently change behaviour.
+function Save-AutoValue {
+  $zh = ($script:Lang -eq 'zh')
+  $w = Get-TypedAutoW
+  if ($null -eq $w) {
+    $sv = UI 'TxtAutoSaved'
+    if ($sv) { $sv.Text = $(if ($zh) { '请输入 5~54 之间的数字' } else { 'enter a number between 5 and 54' }); $sv.Foreground = Br '#F43F5E' }
+    return $false
+  }
+  $mw = [int]([math]::Round($w * 1000))
+  try { Write-ApplyValue $mw } catch {
+    Add-Log $(if ($zh) { ('保存失败：{0}' -f $_.Exception.Message) } else { ('Save failed: {0}' -f $_.Exception.Message) }) 'err'
+    return $false
+  }
+  # keep the in-app copy in step so a re-install does not undo the edit
+  $cfg = Get-Config
+  $cfg.PowerMW = $mw
+  Save-Config $cfg | Out-Null
+  Set-TypedAutoW $w
+  Add-Log $(if ($zh) { ('登录套用值已改为 {0:0.0} W' -f $w) } else { ('Logon value set to {0:0.0} W' -f $w) }) 'ok'
+  Refresh-Automation
+  return $true
+}
+
+function Set-TypedAutoW([double]$Watts) {
+  $tb = UI 'ValAutoW'
+  if ($tb) { $tb.Text = ('{0:0.0}' -f $Watts) }
+}
+
 function Refresh-Automation {
   $zh = ($script:Lang -eq 'zh')
   $installed = Test-AutostartInstalled
@@ -688,15 +750,25 @@ function Refresh-Automation {
   if (UI 'BtnAutoInstall') { (UI 'BtnAutoInstall').IsEnabled = (-not $installed) }
   if (UI 'BtnAutoRemove')  { (UI 'BtnAutoRemove').IsEnabled  = $installed }
 
-  $savedMW = 0
-  $mwPath = Get-ApplyMwPath
-  if (Test-Path $mwPath) {
-    try { $savedMW = [int](([System.IO.File]::ReadAllText($mwPath)).Trim()) } catch { $savedMW = 0 }
+  $savedMW = Get-AutoSavedMW
+  # keep the editable box in sync with whatever is actually stored
+  $ab = UI 'ValAutoW'
+  if ($ab -and -not $ab.IsKeyboardFocused) {
+    $ab.Text = $(if ($savedMW -gt 0) { '{0:0.0}' -f ($savedMW / 1000.0) } else { '' })
   }
-  if ($savedMW -le 0) {
-    $c0 = Get-Config
-    if ($c0.PowerMW) { $savedMW = [int]$c0.PowerMW }
+  $sv = UI 'TxtAutoSaved'
+  if ($sv) {
+    if ($savedMW -gt 0) {
+      $sv.Text = $(if ($zh) { ('已保存 {0:0.0} W' -f ($savedMW / 1000.0)) } else { ('saved {0:0.0} W' -f ($savedMW / 1000.0)) })
+      $sv.Foreground = Br '#34D399'
+    } else {
+      $sv.Text = $(if ($zh) { '尚未保存' } else { 'nothing saved' })
+      $sv.Foreground = Br '#5E6B80'
+    }
   }
+  # Always editable: you may want to set the logon value before enabling it.
+  # Install-Autostart reads Get-AutoSavedMW, so this order works.
+  if (UI 'BtnAutoSave') { (UI 'BtnAutoSave').IsEnabled = $true }
 
   # trigger list
   $tl = UI 'TrigList'

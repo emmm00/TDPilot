@@ -553,7 +553,39 @@
           <Border Grid.Row="2" Style="{StaticResource Card}" Padding="18,16">
             <StackPanel>
               <TextBlock x:Name="TxtTrigHead" Text="触发器" Style="{StaticResource H2}"/>
-              <StackPanel x:Name="TrigList" Margin="0,12,0,0"/>
+
+              <!-- 登录时套用的瓦数：可直接编辑 -->
+              <Border x:Name="AutoEditBox" Background="#101620" CornerRadius="10" Padding="14,12"
+                      Margin="0,12,0,0" BorderBrush="{StaticResource Stroke}" BorderThickness="1">
+                <StackPanel>
+                  <TextBlock x:Name="LblAutoMw" Text="登录时套用的功耗" FontSize="12"
+                             Foreground="{StaticResource TextMid}"/>
+                  <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <Grid>
+                      <TextBox x:Name="ValAutoW" Text="25.0" FontSize="24" FontWeight="Bold"
+                               Foreground="{StaticResource TextHi}" Background="Transparent"
+                               BorderThickness="0" Padding="0" Width="90" MaxLength="5"
+                               CaretBrush="{StaticResource Accent}"
+                               SelectionBrush="{StaticResource AccentDim}"
+                               VerticalContentAlignment="Center"/>
+                      <Border x:Name="AutoWUnderline" Height="2" VerticalAlignment="Bottom"
+                              Background="{StaticResource Stroke}" Margin="0,0,4,2" IsHitTestVisible="False"/>
+                    </Grid>
+                    <TextBlock Text="W" FontSize="13" Foreground="{StaticResource TextLow}"
+                               VerticalAlignment="Bottom" Margin="6,0,0,5"/>
+                    <Button x:Name="BtnAutoSave" Style="{StaticResource BtnPrimary}" Content="保存"
+                            Width="76" Height="32" Margin="16,0,0,0"/>
+                    <TextBlock x:Name="TxtAutoSaved" Text="" FontSize="11"
+                               Foreground="{StaticResource TextLow}" VerticalAlignment="Center"
+                               Margin="12,0,0,0"/>
+                  </StackPanel>
+                  <TextBlock x:Name="TxtAutoMwHint" Text="只改下次登录套用的值，不影响当前已经生效的功耗。"
+                             FontSize="11" Foreground="{StaticResource TextLow}" Margin="0,8,0,0"
+                             TextWrapping="Wrap"/>
+                </StackPanel>
+              </Border>
+
+              <StackPanel x:Name="TrigList" Margin="0,14,0,0"/>
             </StackPanel>
           </Border>
 

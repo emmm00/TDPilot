@@ -40,6 +40,9 @@ ten, and every screen was redesigned from scratch.
   `CallNtPowerInformation(ProcessorInformation)`.
 - **Driver restart button** on the dashboard and the automation page, for when
   the `inpoutx64` service wedges after a resume.
+- **An application icon and a proper version resource.** The binary now shows up
+  as "TDPilot 1.2.0" in Explorer and Task Manager instead of a generic window
+  with no metadata, and it carries the same icon in the title bar and taskbar.
 
 ### Fixed
 
